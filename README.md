@@ -1,10 +1,10 @@
 ![Mendix_on_AWS](https://github.com/senad-d/Mendix-AWS/assets/112484166/c0763430-d49e-4ea1-9e54-6cb0a2a5b86c)
 
-AWS CloudFormation template with GitHub Actions for running Mendix app
+AWS CloudFormation template with GitHub Actions for running the Mendix app
 ![Mendix_app](https://github.com/senad-d/Mendix-AWS/assets/112484166/8cf58a0a-eabb-4df4-80cc-00fa1aea1a55)
 
 ### Quick guide
-Create AWS Static resources from the CloudFormation template so that we can create GitHub Action that is creating a new CloudFormation template for the AWS Infrastructure template, and then upload it to a private S3 bucket for later use in GitHub Action for creating infrastructure resources.
+Create AWS Static resources from the CloudFormation template so that we can create GitHub Action that creates a new CloudFormation template for the AWS Infrastructure template, and then upload it to a private S3 bucket for later use in GitHub Action for creating infrastructure resources.
 1. Create a GitHub repository and push all the necessary files for the project.
 2. Create Static resources from the CloudFormation template.
 3. Run the Action for Building the Docker image and the Action for creating and copying CloudFormation templates to the S3 bucket.
@@ -23,7 +23,7 @@ For the CD/CI pipeline, the next workflows will be used:
 	- Use bash script to create a CloudFormation template for the Infrastructure
 	- Copy infrastructure templates
 - Build and Push Mendix Image
-	- Build docker image
+	- Build a docker image
 	- Tag docker image
 	- Push the docker image to a repository
 - Projects/WorkSpaceManager/Git/Create AWS Infrastructure
@@ -32,7 +32,7 @@ For the CD/CI pipeline, the next workflows will be used:
 	- Create DataBase Task Definition
 	- Register DataBase Task Definition
 	- Create a Private Database Fagate Service
-- Build and Deploy Mendix App
+- Build and Deploy the Mendix App
 	- Create App Task Definition
 	- Register App Task Definition
 	- Create a two Public Mendix Fargate Service
@@ -41,13 +41,15 @@ For the CD/CI pipeline, the next workflows will be used:
 - Delete AWS Infrastructure
 	- Delete the Mendix application stack
 - Update and Push the new image
-	- Build docker image
+	- Build a docker image
 	- Tag docker image
 	- Push the docker image to a repository
 	- Update the ECS cluster with a new image
 
+![Mendix_actions](https://github.com/senad-d/Mendix-AWS/assets/112484166/317ef190-a576-4b3c-b1d2-db1c453baf6f)
 
-For the AWS, we will use the CloudFormation templates to provision resources and Task Definitions for ECS Services.
+
+We will use the CloudFormation templates for AWS to provision resources and Task Definitions for ECS Services.
 - AWS static Infrastructure
 	- S3 - CloudFormation templates
 	- ECR - Mendix Docker image
