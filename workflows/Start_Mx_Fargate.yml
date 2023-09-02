@@ -1,0 +1,78 @@
+name: 3 - Build and Deploy App
+
+env:
+  AWS_ENV: 'dev'
+  AWS_REGION: 'eu-west-1'
+  APP_ADMIN_PASS: '${{ secrets.ADMIN_PASS }}'
+
+
+on:
+  schedule:
+    - cron: '57 5 * * 1-5'  # at 7:57 UTC on every day-of-week from Monday through Friday
+  workflow_dispatch:
+  
+jobs:
+  Build_and_Deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_EX }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_EX }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Create App Task Definition
+      run: |
+        sudo chmod +x ./infra/ecs/apptask.sh && ./infra/ecs/apptask.sh $APP_ADMIN_PASS $AWS_ENV $AWS_REGION
+
+    - name: Register App Task Definition
+      run: |
+        aws ecs register-task-definition --cli-input-json file://infra/ecs/mendix-task.json
+
+    - name: Create a Public project Service
+      run: |
+        aws ecs create-service \
+        --cluster $(aws ssm get-parameter --name "${{ env.AWS_ENV }}.ECSCluster.project" --query "Parameter.Value" --output text) \
+        --service-name project-service \
+        --task-definition $(aws ecs list-task-definitions | grep project-TaskDefinition | tail -n 1 | sed s/\",// | sed s/\"// | sed 's/ //g' | sed s/\"//) \
+        --desired-count 1 \
+        --launch-type "FARGATE" \
+        --network-configuration "awsvpcConfiguration={subnets=[$(aws ssm get-parameter --name "${{ env.AWS_ENV }}.PublicSubnetA.project" --query "Parameter.Value" --output text)],securityGroups=[$(aws ssm get-parameter --name "${{ env.AWS_ENV }}.AppSG.project" --query "Parameter.Value" --output text)],assignPublicIp=ENABLED}" \
+        --load-balancers targetGroupArn=$(aws elbv2 describe-target-groups --names ${{ env.AWS_ENV }}-project-TG --query "TargetGroups[0].TargetGroupArn" --output text),containerName=project,containerPort=8080
+
+
+  slack-workflow-status:
+    if: always()
+    name: Post Workflow Status To Slack
+    needs:
+      - Build_and_Deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Slack Workflow Notification
+        id: slack
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          # Optional Input
+          name: 'project - Create Mendix application stack'
+          # For posting a rich message using Block Kit
+          payload: |
+            {
+              "text": "project - Create Mendix application stack GitHub Action build result: ${{ job.status }}\n${{ github.event.pull_request.html_url || github.event.head_commit.url }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "project - Create Mendix application stack GitHub Action build result: ${{ job.status }}\n${{ github.event.pull_request.html_url || github.event.head_commit.url }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

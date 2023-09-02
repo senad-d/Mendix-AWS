@@ -1,0 +1,57 @@
+name: 5 - Delete Inf. Stack
+
+env:
+  aws_env: 'dev'
+  AWS_REGION: 'eu-west-1'
+
+on:
+  schedule:
+    - cron: '15 15 * * 1-5'  # at 17:15 UTC on every day-of-week from Monday through Friday
+  workflow_dispatch:
+  
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_EX }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_EX }}
+          aws-region: ${{ env.AWS_REGION }}
+      
+      - name: Delete Mendix application stack
+        run: |
+          aws cloudformation delete-stack --stack-name project-resources
+          aws cloudformation wait stack-delete-complete --stack-name project-resources
+
+  slack-workflow-status:
+    if: always()
+    name: Post Workflow Status To Slack
+    needs:
+      - Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Slack Workflow Notification
+        id: slack
+        uses: slackapi/slack-github-action@v1.23.0
+        with:
+          # Optional Input
+          name: 'project - Delete Mendix application stack'
+          # For posting a rich message using Block Kit
+          payload: |
+            {
+              "text": "project - Delete Mendix application stack GitHub Action build result: ${{ job.status }}\n${{ github.event.pull_request.html_url || github.event.head_commit.url }}",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "project - Delete Mendix application stack GitHub Action build result: ${{ job.status }}\n${{ github.event.pull_request.html_url || github.event.head_commit.url }}"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

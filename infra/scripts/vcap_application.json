@@ -1,0 +1,9 @@
+{
+  "application_name": "project",
+  "application_uris": ["project-url"],
+  "limits": {
+    "disk": 2048,
+    "fds": 16384,
+    "mem": 2048
+  }
+}

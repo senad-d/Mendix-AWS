@@ -1,0 +1,43 @@
+name: 2 - Build and Deploy DataBase
+
+env:
+  AWS_ENV: 'dev'
+  AWS_REGION: 'eu-west-1'
+
+on:
+  schedule:
+    - cron: '55 5 * * 1-5'  # at 7:55 UTC on every day-of-week from Monday through Friday
+  workflow_dispatch:
+  
+jobs:
+  Build_and_Deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_EX }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_EX }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Create DataBase Task Definition
+      run: |
+       sudo chmod +x ./infra/ecs/dbtask.sh && ./infra/ecs/dbtask.sh $AWS_ENV $AWS_REGION
+
+    - name: Register DataBase Task Definition
+      run: |
+        aws ecs register-task-definition --cli-input-json file://infra/ecs/db-task.json
+
+    - name: Create a Private DataBase Service
+      run: |
+        aws ecs create-service \
+        --cluster $(aws ssm get-parameter --name "${{ env.AWS_ENV }}.ECSCluster.project" --query "Parameter.Value" --output text) \
+        --service-name Postgres-service \
+        --task-definition $(aws ecs list-task-definitions | grep project-DB-TaskDefinition | tail -n 1 | sed s/\",// | sed s/\"// | sed 's/ //g' | sed s/\"//) \
+        --desired-count 1 \
+        --launch-type "FARGATE" \
+        --network-configuration "awsvpcConfiguration={subnets=[$(aws ssm get-parameter --name "${{ env.AWS_ENV }}.PrivateSubnet.project" --query "Parameter.Value" --output text)],securityGroups=[$(aws ssm get-parameter --name "${{ env.AWS_ENV }}.SG.project.Postgres" --query "Parameter.Value" --output text)]}"

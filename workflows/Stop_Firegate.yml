@@ -1,0 +1,34 @@
+name: 4 - Stop running Fargate services
+
+env:
+  aws_env: 'dev'
+  AWS_REGION: 'eu-west-1'
+
+on:
+  schedule:
+    - cron: '06 15 * * 1-5'  # at 17:06 UTC on every day-of-week from Monday through Friday
+  workflow_dispatch:
+  
+jobs:
+  Build_and_Deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_EX }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_EX }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Stop Mendix application Services
+      run: |
+       aws ecs delete-service \
+       --cluster $(aws ssm get-parameter --name "${{ env.aws_env }}.ECSCluster.project" --query "Parameter.Value" --output text) \
+       --service project-service --force
+       aws ecs delete-service \
+       --cluster $(aws ssm get-parameter --name "${{ env.aws_env }}.ECSCluster.project" --query "Parameter.Value" --output text) \
+       --service Postgres-service --force

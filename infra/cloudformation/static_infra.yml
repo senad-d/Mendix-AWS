@@ -1,0 +1,193 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: project static infrastructure
+
+# Set Parameters (values to pass to your template at runtime)
+Parameters:
+  ProjectName:
+    Description: This name will be used for resource names, keyname and tagging.
+    Type: String
+    Default: project
+  Environment:
+    Description: Deployment environment.
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+    Default: dev
+  CreateS3Bucket:
+    Type: String
+    Default: "true"
+    AllowedValues:
+      - "true"
+      - "false"
+    Description: Defines if S3 bucket will be created as part of this stack.
+
+Resources:
+  ### EFS
+  AppSystemFiles:
+    Type: "AWS::EFS::FileSystem"
+    Properties:
+      AvailabilityZoneName: !Select [0, !GetAZs ""]
+      BackupPolicy:
+        Status: DISABLED
+      PerformanceMode: generalPurpose
+      Encrypted: false
+      LifecyclePolicies:
+        - TransitionToIA: AFTER_30_DAYS
+        - TransitionToPrimaryStorageClass: AFTER_1_ACCESS
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub ${ProjectName}.FileSystem
+
+  ### Logs
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "${ProjectName}-ECS-logs-${Environment}"
+      RetentionInDays: 1
+
+  ### ECR
+  ECRepo:
+    Type: AWS::ECR::Repository
+    Properties:
+      LifecyclePolicy:
+        LifecyclePolicyText: '{
+          "rules": [
+              {
+                  "rulePriority": 1,
+                  "description": "Keep only five untagged images, expire all others",
+                  "selection": {
+                      "tagStatus": "untagged",
+                      "countType": "imageCountMoreThan",
+                      "countNumber": 5
+                  },
+                  "action": {
+                      "type": "expire"
+                  }
+              }
+          ]
+          }'
+        RegistryId: !Ref "AWS::AccountId"
+      RepositoryName: !Sub "${ProjectName}-${Environment}-ecr"
+      RepositoryPolicyText:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowPushPull
+            Effect: Allow
+            Principal:
+              AWS:
+                - !Sub "arn:aws:iam::${AWS::AccountId}:assumed-role/adminrole"
+            Action:
+              - "ecr:GetDownloadUrlForLayer"
+              - "ecr:BatchGetImage"
+              - "ecr:BatchCheckLayerAvailability"
+              - "ecr:PutImage"
+              - "ecr:InitiateLayerUpload"
+              - "ecr:UploadLayerPart"
+              - "ecr:CompleteLayerUpload"
+      Tags:
+        - { Key: Project, Value: !Ref ProjectName }
+
+  ### S3 buckets for deployment
+  ReleasesBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub "${ProjectName}-static-resources-${Environment}"
+      LifecycleConfiguration:
+        Rules:
+          - Id: 45 day delete artifacts rule
+            Prefix: !Sub "${ProjectName}"
+            Status: Enabled
+            ExpirationInDays: 45
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Suspended
+      Tags:
+        - { Key: Project, Value: !Ref ProjectName }
+        - { Key: Environment, Value: !Ref Environment }
+
+  ReleasesBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DeletionPolicy: Retain
+    Properties:
+      Bucket: !Ref ReleasesBucket
+      PolicyDocument:
+        Version: "2008-10-17"
+        Statement:
+          - Action:
+              - s3:ListBucket
+              - s3:GetObject
+              - s3:PutObject
+            Effect: Allow
+            Resource:
+              - !Sub "arn:aws:s3:::${ReleasesBucket}"
+              - !Sub "arn:aws:s3:::${ReleasesBucket}/*"
+            Principal:
+              AWS:
+                - !Sub "arn:aws:iam::${AWS::AccountId}:root"
+
+  ### Parameters
+  AppSystemFilesParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "${Environment}.AppSystemFiles.${ProjectName}"
+      Type: String
+      Value: !Ref AppSystemFiles
+      Description: SSM Parameter for SystemFiles
+
+  LogGroupParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "${Environment}.LogGroup.${ProjectName}"
+      Type: String
+      Value: !Ref LogGroup
+      Description: SSM Parameter for LogGroup
+
+  ECRepoParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "${Environment}.ECRepo.${ProjectName}"
+      Type: String
+      Value: !Ref ECRepo
+      Description: SSM Parameter for ECRepo
+
+  ReleasesBucketParameter:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Name: !Sub "${Environment}.ReleasesBucket.${ProjectName}"
+      Type: String
+      Value: !Ref ReleasesBucket
+      Description: SSM Parameter for ReleasesBucket
+
+### Outputs
+Outputs:
+  ProjectName:
+    Description: ProjectName
+    Value: !Ref ProjectName
+    Export:
+      Name: project-ProjectName
+
+  AppSystemFiles:
+    Description: EFS
+    Value: !Ref AppSystemFiles
+    Export:
+      Name: project-AppSystemFiles
+
+  LogGroup:
+    Description: LogGroup
+    Value: !Ref LogGroup
+    Export:
+      Name: project-LogGroup
+
+  ECRepo:
+    Description: ECRepo
+    Value: !Ref ECRepo
+    Export:
+      Name: project-ECRepo
+
+  ReleasesBucket:
+    Description: S3 Bucket for CloudFormation templates
+    Value: !Ref ReleasesBucket
+    Export:
+      Name: project-ReleasesBucket
